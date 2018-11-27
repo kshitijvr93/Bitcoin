@@ -8,7 +8,14 @@ defmodule DS do
         DSS.start_child(spid,0,highestNodePossible)
 
         genServerGenerator(spid,1,highestNodePossible)
+        
+        :timer.sleep(300)
+        GenServer.call(:id0,:generateBlockStart)
+        :timer.sleep(300)
+        # GenServer.cast(:id0,{:createDummyValues,10,System.system_time(:millisecond),0})
 
+        GenServer.cast(:id0, {:createTransactions, 10, 1, 20})
+        GenServer.cast(:id0, {:createTransactions, 30, 2, 40})
         # all children started!!
 
     end
