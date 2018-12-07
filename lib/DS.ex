@@ -1,7 +1,6 @@
 defmodule DS do
-    def starting(a,b) do
-        IO.puts(a)
-        IO.puts(b)
+    def starting() do
+        
         highestNodePossible=100
         {_,spid}=DSS.start_link([])
 
@@ -12,10 +11,10 @@ defmodule DS do
         :timer.sleep(300)
         GenServer.call(:id0,:generateBlockStart)
         :timer.sleep(300)
-        # GenServer.cast(:id0,{:createDummyValues,10,System.system_time(:millisecond),0})
+        GenServer.cast(:id0,{:createDummyValues,10,System.system_time(:millisecond),0})
 
-        GenServer.cast(:id0, {:createTransactions, 10, 1, 20})
-        GenServer.cast(:id0, {:createTransactions, 30, 2, 40})
+        # GenServer.cast(:id0, {:createTransactions, 10, 1, 20})
+        # GenServer.cast(:id0, {:createTransactions, 30, 2, 40})
         # all children started!!
 
     end
