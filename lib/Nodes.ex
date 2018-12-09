@@ -18,7 +18,8 @@ defmodule Nodes do
             current_transaction_pool_list = []
             ledger = []
             transactionsNewBlockWork = []
-            [selfNum,highestNodePossible,keys,wallet_value, transactionsNewBlockWork,current_transaction_pool_list, ledger]
+            neighbourList= Topology.get_neighbours(selfNum,highestNodePossible,"Ring")
+            [selfNum,neighbourList,highestNodePossible,keys,wallet_value, transactionsNewBlockWork,current_transaction_pool_list, ledger]
         end
         
         GenServer.start_link(__MODULE__,state,name: :"#{id}")# for zero the maxNodes
@@ -27,11 +28,11 @@ defmodule Nodes do
     def handle_cast({:receivetransactionList, transacList},state) do #for !0
         
         # IO.inspect(state)
-        [selfNum,highestNodePossible,keys,wallet_value, transactionsNewBlockWork ,current_transaction_pool_list, ledger] = state
+        [selfNum,neighbourList,highestNodePossible,keys,wallet_value, transactionsNewBlockWork ,current_transaction_pool_list, ledger] = state
         IO.puts("new Transactions received by node #{selfNum}")
         # IO.inspect(transacList)
         current_transaction_pool_list= current_transaction_pool_list++ transacList
-         state =  [selfNum,highestNodePossible,keys,wallet_value, transactionsNewBlockWork,current_transaction_pool_list, ledger]
+         state =  [selfNum,neighbourList,highestNodePossible,keys,wallet_value, transactionsNewBlockWork,current_transaction_pool_list, ledger]
          
         
        
@@ -40,7 +41,7 @@ defmodule Nodes do
 
     def handle_cast(:generateBlock,state) do #for 0
         # IO.puts("generateBlock")
-        [selfNum,highestNodePossible,keys,wallet_value, transactionsNewBlockWork, current_transaction_pool_list, ledger] = state
+        [selfNum,neighbourList,highestNodePossible,keys,wallet_value, transactionsNewBlockWork, current_transaction_pool_list, ledger] = state
 
          #state =  [selfNum,highestNodePossible,keys,wallet_value, transactionsNewBlockWork, transacList, ledger]
          state=
@@ -52,7 +53,7 @@ defmodule Nodes do
             else
                 # IO.puts("1")
                 GenServer.cast(:"id#{selfNum}",{:mineCoin,current_transaction_pool_list,:rand.uniform(10000000),System.system_time(:millisecond)})
-                state =  [selfNum,highestNodePossible,keys,wallet_value, current_transaction_pool_list, [], ledger]
+                state =  [selfNum,neighbourList,highestNodePossible,keys,wallet_value, current_transaction_pool_list, [], ledger]
                 
                 state
             end
@@ -78,7 +79,8 @@ defmodule Nodes do
 
     def handle_cast({:mineCoin,data,currentNonce,startTime},state) do
         # IO.puts("mineCoin")
-        [selfNum,highestNodePossible,keys,wallet_value, transactionsNewBlockWork, current_transaction_pool_list, ledger] = state
+        # IO.inspect(state)
+        [selfNum,neighbourList,highestNodePossible,keys,wallet_value, transactionsNewBlockWork, current_transaction_pool_list, ledger] = state
         
         state =
         if transactionsNewBlockWork == data do
@@ -123,9 +125,11 @@ defmodule Nodes do
 
                 # blockHeader = "NONCE = #{currentNonce} || timestamp =  #{System.system_time(:millisecond)} || time taken to find NONCE in milliseconds = #{nonceTimeTaken}"
                 block = {blockHeader,blockData}
-                ledger = ledger ++ [block]
+                ledger = [block] ++ ledger
                 GenServer.cast(:"id#{selfNum}",{:mineCoin,data,currentNonce+1,startTime})
-                [selfNum,highestNodePossible,keys,wallet_value+5, [], current_transaction_pool_list, ledger]
+                propagateBlock(block , neighbourList)
+                [selfNum,neighbourList,highestNodePossible,keys,wallet_value+5, [], current_transaction_pool_list, ledger]
+                
                 ##### to fill
             else           
                 GenServer.cast(:"id#{selfNum}",{:mineCoin,data,currentNonce+1,startTime})
@@ -167,7 +171,7 @@ defmodule Nodes do
     end
 
     def handle_call(:showState, _from, state) do
-        [selfNum,highestNodePossible,keys,wallet_value, transactionsNewBlockWork, current_transaction_pool_list, ledger] = state
+        [selfNum,neighbourList,highestNodePossible,keys,wallet_value, transactionsNewBlockWork, current_transaction_pool_list, ledger] = state
         [public, private] =keys
         IO.inspect(" Showing state for node #{selfNum} ")
         IO.inspect("    the wallet ")
@@ -207,13 +211,174 @@ defmodule Nodes do
         end
 
     end
+    # tempBlock = {[1,10,10,10,10,10],""}
+    def handle_cast({:receiveBlock,receivedBlock},state) do # here we do two things check if the block is competent and if yes add to self and send to other nodes
+        IO.puts("1")
+        [selfNum,neighbourList,highestNodePossible,keys,wallet_value, transactionsNewBlockWork, current_transaction_pool_list, ledger] =state
+        {blockHeader,blockData}=receivedBlock
+        IO.puts("2")
+        [blockId,creatorNum,creationTimeStamp,currentNonce,hashedBlockData,hashedPreviousBlockHead] =  blockHeader
+        competitionResult = checkCompetent(ledger,blockHeader) #[true/false, matchingBlock/[]]
+        
+        IO.inspect(competitionResult)
+        IO.puts("3")
+        [isCompetent,matchingBlockAlreadyContained] = competitionResult
+        IO.puts("3")
+        state=
+        if isCompetent do
+            # ledger updation
+            {blockListToBeRemoved,transactionsToBeAdded} = cleanLedger(ledger,blockId,{[],[]})
+            # indexOfMatchingBlockInLedger =  Enum.find_index(ledger,fn(x) -> x== matchingBlockAlreadyContained end)
+            
+            newLedger = ledger -- blockListToBeRemoved#List.replace_at(ledger,indexOfMatchingBlockInLedger,receivedBlock)
+            newLedger = newLedger ++ [receivedBlock]
+            # ledger updation
+
+
+            # transaction updation
+                # {_,incompetentTransactions} =  matchingBlockAlreadyContained
+                
+                # incompetentTransactions =  String.trim(incompetentTransactions,"|")
+                # incompetentTransactionsList = String.split(incompetentTransactions,"||")
+
+                {_,completedTransactions} = receivedBlock
+                alreadyDoneTransactions =  String.trim(completedTransactions)
+                alreadyDoneTransactionsList = String.split(alreadyDoneTransactions,"||")
+
+                current_transaction_pool_list =  current_transaction_pool_list ++ transactionsNewBlockWork ++ transactionsToBeAdded
+                current_transaction_pool_list = current_transaction_pool_list -- alreadyDoneTransactionsList
+                # current_transaction_pool_list = current_transaction_pool_list ++ 
+                transactionsNewBlockWork =[]
+            # transaction updation
+            
+            # propagating the new block
+                propagateBlock(receivedBlock , neighbourList)
+            # propagating the new block
+            state = [selfNum,neighbourList,highestNodePossible,keys,wallet_value, transactionsNewBlockWork, current_transaction_pool_list, newLedger]
+        else
+            state
+        end
+        
+
+        {:noreply,state}
+    end
+
+    def propagateBlock(receivedBlock, neighbourList) do
+        Enum.each(neighbourList , fn(x)->
+            GenServer.cast(:"id#{x}",{:receiveBlock,receivedBlock})
+        end)
+    end
+
+    def cleanLedger(ledger,receivedBlockId,{newLedger, toAddTransactionPool}) do
+        {newLedger, toAddTransactionPool}=
+        if ledger == [] do
+            {newLedger,toAddTransactionPool}
+        else
+            [firstBlock|remainingLedger] = ledger
+            {header,data} = firstBlock
+            [matchingBlockId,_,_,_,_,_] = header
+
+            newLedger=
+            if matchingBlockId < receivedBlockId do # to delete this block
+                
+                newLedger
+            else
+                newLedger = newLedger ++ [firstBlock]
+                newLedger
+            end
+            
+            toAddTransactionPool=
+            if matchingBlockId < receivedBlockId do
+                toAddTransactionPool
+            else
+                newTransactionsToBeAddedList = String.split(String.trim(data,"|"), "||")
+                toAddTransactionPool = newTransactionsToBeAddedList ++ toAddTransactionPool
+            end
+
+            cleanLedger(remainingLedger,receivedBlockId, {newLedger,toAddTransactionPool})
+        end
+        # {newLedger,toAddTransactionPool}
+
+    end
+
+    @docp """
+block1 = {[1,10,10,10,10,10],10}
+block2= {[2,20,20,20,20,20],10}
+block3 = {[3,30,30,30,30,30],10}
+ledger = [block1,block2,block3]
+receivedBlockHeader = [2,50,50,50,50,50]
+Nodes.checkCompetent(ledger,receivedBlockHeader)
+
+    """
+    def checkCompetent(ledger,receivedBlockHeader) do
+        [blockId,selfNum,creationTimeStamp,currentNonce,hashedBlockData,hashedPreviousBlockHead] =  receivedBlockHeader
+        matchingBlock=findMatchingIdBlock(ledger,blockId,[])
+        
+        returnValue = 
+        if matchingBlock == [] do
+            # received block is exclusive
+            [true,matchingBlock]
+            
+        else
+            # received block is challenged and not exclusive
+            # checking if already present block was created before
+            {[matchingBlockId,matchingCreatorId,matchingCreationTime,_,_,_],_} =  matchingBlock
+
+            returnValueNew=
+            if creationTimeStamp < matchingCreationTime or ((creationTimeStamp == matchingCreationTime) and (matchingCreatorId>selfNum) ) do # new block was created before!!
+                [true,matchingBlock]
+            else
+                
+                [false,matchingBlock]
+               
+            end
+            
+            returnValueNew
+        end
+        returnValue
+    end
+    
+
+    # Nodes.findMatchingIdBlock([{[5,1,2,3,4,6],[]} ,{[10,20,123,30,30,30],""}, {[20,30,123123,12,3,123],[]}     ],10,[])
+    def findMatchingIdBlock(pruningLedger,id,ans) do
+        ans= 
+        if pruningLedger == [] do
+            ans
+        else
+            [latestBlock|prunedLedger] = pruningLedger
+            {latestBlockHeader,latestBlockData} = latestBlock
+            [blockId,selfNum,creationTimeStamp,currentNonce,hashedBlockData,hashedPreviousBlockHead] =  latestBlockHeader
+            ans = 
+            if blockId == id do
+                latestBlock
+            else
+                []    
+            end
+
+            IO.puts(blockId)
+
+            ans =
+            cond do
+                ans != [] ->
+                    ans
+                prunedLedger == [] ->
+                    ans
+                true ->
+                    findMatchingIdBlock(prunedLedger,id,ans)
+
+            end
+
+            ans
+        end
+        ans
+    end
 
 
     def handle_cast({:createTransactions,sender,money,receiver},state) do
         
         senderState= GenServer.call(:"id#{sender}",:getState)
 
-        [senderNum,highestNodePossible,keys,wallet_value, transactionsNewBlockWork, current_transaction_pool_list, ledger] =senderState
+        [senderNum,neighbourList,highestNodePossible,keys,wallet_value, transactionsNewBlockWork, current_transaction_pool_list, ledger] =senderState
 
         if wallet_value < money or money<0 do
             IO.puts("INVALID TRANSACTION SENDER HAS INSUFFICIENT BALANCE OF #{wallet_value} or money transferred is less than 0")
@@ -244,7 +409,7 @@ defmodule Nodes do
     end
     
     def handle_cast({:updateWallet, money},state) do
-        [selfNum,highestNodePossible,keys,wallet_value, transactionsNewBlockWork, current_transaction_pool_list, ledger] =state
+        [selfNum,neighbourList,highestNodePossible,keys,wallet_value, transactionsNewBlockWork, current_transaction_pool_list, ledger] =state
         if money < 0 do
             IO.puts("deducting value #{-money} from #{selfNum} wallet")
 
@@ -254,7 +419,7 @@ defmodule Nodes do
 
         wallet_value = wallet_value + money
 
-        state = [selfNum,highestNodePossible,keys,wallet_value, transactionsNewBlockWork, current_transaction_pool_list, ledger]
+        state = [selfNum,neighbourList,highestNodePossible,keys,wallet_value, transactionsNewBlockWork, current_transaction_pool_list, ledger]
         {:noreply,state}
     end
 
@@ -265,7 +430,7 @@ defmodule Nodes do
     end
 
     def handle_call({:signTransaction,transactionToBeSigned},_from,state) do
-        [senderNum,_,[public,private],_, _, _, _] =state
+        [senderNum,_,_,[public,private],_, _, _, _] =state
 
         signature = :crypto.sign(:ecdsa, :sha512, transactionToBeSigned, [private, :brainpoolP512r1])
         returnValue = [transactionToBeSigned, signature, public]
