@@ -188,7 +188,7 @@ defmodule Nodes do
     def handle_cast({:createDummyValues,counter,w8time,transactionNumber},state) do #for 0
         # IO.puts("createDummyValues!!")
         if counter > 0 do
-            if System.system_time(:millisecond) - w8time >1000 do
+            if System.system_time(:millisecond) - w8time >500 do
                 transactionList = generateRandomTransactions(:rand.uniform(5),[])
                 IO.inspect(transactionList)
                 spreadTransactions(1,100,transactionList)
@@ -213,17 +213,17 @@ defmodule Nodes do
     end
     # tempBlock = {[1,10,10,10,10,10],""}
     def handle_cast({:receiveBlock,receivedBlock},state) do # here we do two things check if the block is competent and if yes add to self and send to other nodes
-        IO.puts("1")
+        # IO.puts("1")
         [selfNum,neighbourList,highestNodePossible,keys,wallet_value, transactionsNewBlockWork, current_transaction_pool_list, ledger] =state
         {blockHeader,blockData}=receivedBlock
-        IO.puts("2")
+        # IO.puts("2")
         [blockId,creatorNum,creationTimeStamp,currentNonce,hashedBlockData,hashedPreviousBlockHead] =  blockHeader
         competitionResult = checkCompetent(ledger,blockHeader) #[true/false, matchingBlock/[]]
         
-        IO.inspect(competitionResult)
-        IO.puts("3")
+        # IO.inspect(competitionResult)
+        # IO.puts("3")
         [isCompetent,matchingBlockAlreadyContained] = competitionResult
-        IO.puts("3")
+        # IO.puts("3")
         state=
         if isCompetent do
             # ledger updation
@@ -311,6 +311,7 @@ Nodes.checkCompetent(ledger,receivedBlockHeader)
 
     """
     def checkCompetent(ledger,receivedBlockHeader) do
+        IO.puts("competition check!")
         [blockId,selfNum,creationTimeStamp,currentNonce,hashedBlockData,hashedPreviousBlockHead] =  receivedBlockHeader
         matchingBlock=findMatchingIdBlock(ledger,blockId,[])
         
@@ -355,7 +356,7 @@ Nodes.checkCompetent(ledger,receivedBlockHeader)
                 []    
             end
 
-            IO.puts(blockId)
+            # IO.puts(blockId)
 
             ans =
             cond do

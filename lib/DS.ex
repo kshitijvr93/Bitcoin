@@ -11,9 +11,9 @@ defmodule DS do
         :timer.sleep(300)
         GenServer.call(:id0,:generateBlockStart)
         :timer.sleep(300)
-        # GenServer.cast(:id0,{:createDummyValues,10,System.system_time(:millisecond),0})
+        GenServer.cast(:id0,{:createDummyValues,10,System.system_time(:millisecond),0})
 
-        GenServer.cast(:id0, {:createTransactions, 10, 1, 20})
+        # GenServer.cast(:id0, {:createTransactions, 10, 1, 20})
         # GenServer.cast(:id0, {:createTransactions, 30, 2, 40})
         # GenServer.cast(:id0, {:createTransactions, 50, 2, 70})
         # all children started!!
