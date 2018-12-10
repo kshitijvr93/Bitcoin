@@ -128,7 +128,7 @@ defmodule Nodes do
                 ledger = [block] ++ ledger
                 GenServer.cast(:"id#{selfNum}",{:mineCoin,data,currentNonce+1,startTime})
                 propagateBlock(block , neighbourList)
-                [selfNum,neighbourList,highestNodePossible,keys,wallet_value+5, [], current_transaction_pool_list, ledger]
+                [selfNum,neighbourList,highestNodePossible,keys,wallet_value, [], current_transaction_pool_list, ledger]
                 
                 ##### to fill
             else           
