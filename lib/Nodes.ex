@@ -18,8 +18,9 @@ defmodule Nodes do
             current_transaction_pool_list = []
             ledger = []
             transactionsNewBlockWork = []
+            ledgerCoinAdderIndex = 0
             neighbourList= Topology.get_neighbours(selfNum,highestNodePossible,"Ring")
-            [selfNum,neighbourList,highestNodePossible,keys,wallet_value, transactionsNewBlockWork,current_transaction_pool_list, ledger]
+            [selfNum,neighbourList,highestNodePossible,keys,wallet_value, transactionsNewBlockWork,current_transaction_pool_list, ledger,ledgerCoinAdderIndex]
         end
         
         GenServer.start_link(__MODULE__,state,name: :"#{id}")# for zero the maxNodes
@@ -28,11 +29,11 @@ defmodule Nodes do
     def handle_cast({:receivetransactionList, transacList},state) do #for !0
         
         # IO.inspect(state)
-        [selfNum,neighbourList,highestNodePossible,keys,wallet_value, transactionsNewBlockWork ,current_transaction_pool_list, ledger] = state
+        [selfNum,neighbourList,highestNodePossible,keys,wallet_value, transactionsNewBlockWork ,current_transaction_pool_list, ledger,ledgerCoinAdderIndex] = state
         IO.puts("new Transactions received by node #{selfNum}")
         # IO.inspect(transacList)
         current_transaction_pool_list= current_transaction_pool_list++ transacList
-         state =  [selfNum,neighbourList,highestNodePossible,keys,wallet_value, transactionsNewBlockWork,current_transaction_pool_list, ledger]
+         state =  [selfNum,neighbourList,highestNodePossible,keys,wallet_value, transactionsNewBlockWork,current_transaction_pool_list, ledger,ledgerCoinAdderIndex]
          
         
        
@@ -41,7 +42,7 @@ defmodule Nodes do
 
     def handle_cast(:generateBlock,state) do #for 0
         # IO.puts("generateBlock")
-        [selfNum,neighbourList,highestNodePossible,keys,wallet_value, transactionsNewBlockWork, current_transaction_pool_list, ledger] = state
+        [selfNum,neighbourList,highestNodePossible,keys,wallet_value, transactionsNewBlockWork, current_transaction_pool_list, ledger,ledgerCoinAdderIndex] = state
 
          #state =  [selfNum,highestNodePossible,keys,wallet_value, transactionsNewBlockWork, transacList, ledger]
          state=
@@ -53,7 +54,7 @@ defmodule Nodes do
             else
                 # IO.puts("1")
                 GenServer.cast(:"id#{selfNum}",{:mineCoin,current_transaction_pool_list,:rand.uniform(10000000),System.system_time(:millisecond)})
-                state =  [selfNum,neighbourList,highestNodePossible,keys,wallet_value, current_transaction_pool_list, [], ledger]
+                state =  [selfNum,neighbourList,highestNodePossible,keys,wallet_value, current_transaction_pool_list, [], ledger,ledgerCoinAdderIndex]
                 
                 state
             end
@@ -80,7 +81,7 @@ defmodule Nodes do
     def handle_cast({:mineCoin,data,currentNonce,startTime},state) do
         # IO.puts("mineCoin")
         # IO.inspect(state)
-        [selfNum,neighbourList,highestNodePossible,keys,wallet_value, transactionsNewBlockWork, current_transaction_pool_list, ledger] = state
+        [selfNum,neighbourList,highestNodePossible,keys,wallet_value, transactionsNewBlockWork, current_transaction_pool_list, ledger,ledgerCoinAdderIndex] = state
         
         state =
         if transactionsNewBlockWork == data do
@@ -125,10 +126,10 @@ defmodule Nodes do
 
                 # blockHeader = "NONCE = #{currentNonce} || timestamp =  #{System.system_time(:millisecond)} || time taken to find NONCE in milliseconds = #{nonceTimeTaken}"
                 block = {blockHeader,blockData}
-                ledger = [block] ++ ledger
+                ledger =  ledger ++ [block]
                 GenServer.cast(:"id#{selfNum}",{:mineCoin,data,currentNonce+1,startTime})
                 propagateBlock(block , neighbourList)
-                [selfNum,neighbourList,highestNodePossible,keys,wallet_value, [], current_transaction_pool_list, ledger]
+                [selfNum,neighbourList,highestNodePossible,keys,wallet_value, [], current_transaction_pool_list, ledger, ledgerCoinAdderIndex]
                 
                 ##### to fill
             else           
@@ -171,7 +172,7 @@ defmodule Nodes do
     end
 
     def handle_call(:showState, _from, state) do
-        [selfNum,neighbourList,highestNodePossible,keys,wallet_value, transactionsNewBlockWork, current_transaction_pool_list, ledger] = state
+        [selfNum,neighbourList,highestNodePossible,keys,wallet_value, transactionsNewBlockWork, current_transaction_pool_list, ledger , ledgerCoinAdderIndex] = state
         [public, private] =keys
         IO.inspect(" Showing state for node #{selfNum} ")
         IO.inspect("    the wallet ")
@@ -183,19 +184,22 @@ defmodule Nodes do
         IO.inspect("wallet value = #{wallet_value}")
         IO.inspect("ledger =")
         IO.inspect(ledger)
+        IO.inspect("ledger index for mined value is #{ledgerCoinAdderIndex}")
         {:reply,"",state}
     end
-    def handle_cast({:createDummyValues,counter,w8time,transactionNumber},state) do #for 0
+    def handle_cast({:createDummyValues,counter,w8time,transactionNumber,totalTransactionList},state) do #for 0
         # IO.puts("createDummyValues!!")
         if counter > 0 do
             if System.system_time(:millisecond) - w8time >500 do
                 transactionList = generateRandomTransactions(:rand.uniform(5),[])
+                transactionList =  transactionList -- totalTransactionList
+                totalTransactionList = transactionList ++ totalTransactionList 
                 IO.inspect(transactionList)
                 spreadTransactions(1,100,transactionList)
 
-                GenServer.cast(:id0,{:createDummyValues,counter-1,System.system_time(:millisecond),transactionNumber+length(transactionList)})
+                GenServer.cast(:id0,{:createDummyValues,counter-1,System.system_time(:millisecond),transactionNumber+length(transactionList), totalTransactionList})
             else
-                GenServer.cast(:id0,{:createDummyValues,counter,w8time,transactionNumber})
+                GenServer.cast(:id0,{:createDummyValues,counter,w8time,transactionNumber, totalTransactionList})
             end
        
         end
@@ -211,18 +215,62 @@ defmodule Nodes do
         end
 
     end
+
+    def addMinedValue(selfNum, startIndex, lastIndex, ledger, value) do
+        returnValue=
+        if startIndex >= lastIndex or ledger == [] do
+            value
+        else
+            [block|remainingLedger] = ledger
+            {header,data} = block
+            [blockId,creatorNum,_,_,_,_] =  header
+            value=
+            if blockId > startIndex and blockId <= lastIndex and selfNum == creatorNum do
+                value = value + 500
+            else
+                value
+            end
+            addMinedValue(selfNum, startIndex, lastIndex, remainingLedger, value)
+        end
+
+        returnValue
+
+    end
+
+
     # tempBlock = {[1,10,10,10,10,10],""}
     def handle_cast({:receiveBlock,receivedBlock},state) do # here we do two things check if the block is competent and if yes add to self and send to other nodes
         # IO.puts("1")
-        [selfNum,neighbourList,highestNodePossible,keys,wallet_value, transactionsNewBlockWork, current_transaction_pool_list, ledger] =state
+        [selfNum,neighbourList,highestNodePossible,keys,wallet_value, transactionsNewBlockWork, current_transaction_pool_list, ledger, ledgerCoinAdderIndex] =state
         {blockHeader,blockData}=receivedBlock
         # IO.puts("2")
+        
         [blockId,creatorNum,creationTimeStamp,currentNonce,hashedBlockData,hashedPreviousBlockHead] =  blockHeader
+
+        wallet_value = wallet_value + addMinedValue(selfNum, ledgerCoinAdderIndex ,blockId-5, ledger, 0)
+
+        ledgerCoinAdderIndex =  
+        if ledgerCoinAdderIndex > (blockId - 5) do
+            ledgerCoinAdderIndex
+        else
+            blockId-5
+        end
+
         competitionResult = checkCompetent(ledger,blockHeader) #[true/false, matchingBlock/[]]
         
         # IO.inspect(competitionResult)
         # IO.puts("3")
         [isCompetent,matchingBlockAlreadyContained] = competitionResult
+        
+     
+        if isCompetent do
+            # propagating the new block
+                propagateBlock(receivedBlock , neighbourList)
+            # propagating the new block
+            # checkHashingMatchForBlock(ledger,blockHeader)
+        
+     
+        end 
         # IO.puts("3")
         state=
         if isCompetent do
@@ -252,9 +300,10 @@ defmodule Nodes do
             # transaction updation
             
             # propagating the new block
-                propagateBlock(receivedBlock , neighbourList)
+                # propagateBlock(receivedBlock , neighbourList)
             # propagating the new block
-            state = [selfNum,neighbourList,highestNodePossible,keys,wallet_value, transactionsNewBlockWork, current_transaction_pool_list, newLedger]
+            
+            state = [selfNum,neighbourList,highestNodePossible,keys,wallet_value, transactionsNewBlockWork, current_transaction_pool_list, newLedger, ledgerCoinAdderIndex]
         else
             state
         end
@@ -310,15 +359,47 @@ receivedBlockHeader = [2,50,50,50,50,50]
 Nodes.checkCompetent(ledger,receivedBlockHeader)
 
     """
+
+    def checkHashingMatchForBlock(ledger,receivedBlockHeader) do
+        [blockId,selfNum,creationTimeStamp,currentNonce,hashedBlockData,hashedPreviousBlockHead] =  receivedBlockHeader
+        
+        returnValue=
+        if blockId == 1 do
+            true
+        else
+            
+            previousBlockId= blockId-1
+            previousBlock = Enum.at(ledger,blockId-2)
+            if previousBlock != nil do
+                IO.puts("hey!! #{length(ledger)}  #{blockId}")
+                {previousBlockHeader,_} = previousBlock
+                if hashedStringify(concatTransactions(previousBlockHeader,"")) == hashedPreviousBlockHead do
+                    true
+                else
+                    false
+                end
+            else
+                false
+            end
+            
+        end
+        returnValue
+    end
+    
     def checkCompetent(ledger,receivedBlockHeader) do
-        IO.puts("competition check!")
+        
         [blockId,selfNum,creationTimeStamp,currentNonce,hashedBlockData,hashedPreviousBlockHead] =  receivedBlockHeader
         matchingBlock=findMatchingIdBlock(ledger,blockId,[])
-        
+        # IO.puts("competition check!   #{blockId}")
         returnValue = 
+        # if checkHashingMatchForBlock(ledger,receivedBlockHeader) do
         if matchingBlock == [] do
             # received block is exclusive
-            [true,matchingBlock]
+            # if checkHashingMatchForBlock(ledger,receivedBlockHeader) do
+                [true,matchingBlock]
+            # else
+                # [false,matchingBlock]
+            # end
             
         else
             # received block is challenged and not exclusive
@@ -327,17 +408,26 @@ Nodes.checkCompetent(ledger,receivedBlockHeader)
 
             returnValueNew=
             if creationTimeStamp < matchingCreationTime or ((creationTimeStamp == matchingCreationTime) and (matchingCreatorId>selfNum) ) do # new block was created before!!
-                [true,matchingBlock]
+                # if checkHashingMatchForBlock(ledger,receivedBlockHeader) do
+                    [true,matchingBlock]
+                # else
+                    # [false,matchingBlock]
+                # end
             else
                 
                 [false,matchingBlock]
-               
+            
             end
             
             returnValueNew
         end
+        # else
+        #     [false,matchingBlock]
+        # end
         returnValue
     end
+
+
     
 
     # Nodes.findMatchingIdBlock([{[5,1,2,3,4,6],[]} ,{[10,20,123,30,30,30],""}, {[20,30,123123,12,3,123],[]}     ],10,[])
@@ -379,7 +469,7 @@ Nodes.checkCompetent(ledger,receivedBlockHeader)
         
         senderState= GenServer.call(:"id#{sender}",:getState)
 
-        [senderNum,neighbourList,highestNodePossible,keys,wallet_value, transactionsNewBlockWork, current_transaction_pool_list, ledger] =senderState
+        [senderNum,neighbourList,highestNodePossible,keys,wallet_value, transactionsNewBlockWork, current_transaction_pool_list, ledger, ledgerCoinAdderIndex] =senderState
 
         if wallet_value < money or money<0 do
             IO.puts("INVALID TRANSACTION SENDER HAS INSUFFICIENT BALANCE OF #{wallet_value} or money transferred is less than 0")
@@ -410,7 +500,7 @@ Nodes.checkCompetent(ledger,receivedBlockHeader)
     end
     
     def handle_cast({:updateWallet, money},state) do
-        [selfNum,neighbourList,highestNodePossible,keys,wallet_value, transactionsNewBlockWork, current_transaction_pool_list, ledger] =state
+        [selfNum,neighbourList,highestNodePossible,keys,wallet_value, transactionsNewBlockWork, current_transaction_pool_list, ledger, ledgerCoinAdderIndex] =state
         if money < 0 do
             IO.puts("deducting value #{-money} from #{selfNum} wallet")
 
@@ -420,7 +510,7 @@ Nodes.checkCompetent(ledger,receivedBlockHeader)
 
         wallet_value = wallet_value + money
 
-        state = [selfNum,neighbourList,highestNodePossible,keys,wallet_value, transactionsNewBlockWork, current_transaction_pool_list, ledger]
+        state = [selfNum,neighbourList,highestNodePossible,keys,wallet_value, transactionsNewBlockWork, current_transaction_pool_list, ledger, ledgerCoinAdderIndex]
         {:noreply,state}
     end
 
