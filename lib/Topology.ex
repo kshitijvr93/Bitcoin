@@ -21,15 +21,15 @@ defmodule Topology do
             topology == "Ring" ->
             
                 cond do
-                    num == 1 -> [max_num,2]
+                    num == 1 -> [max_num,2,Enum.random(1..max_num)]
 
                     num == max_num ->  temp = max_num - 1
-                                        [temp,1]
+                                        [temp,1,Enum.random(1..max_num)]
 
                     true ->
                         temp1 = num - 1
                         temp2 = num + 1
-                        [temp1,temp2]
+                        [temp1,temp2,Enum.random(1..max_num)]
 
                 end
 
